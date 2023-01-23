@@ -1,0 +1,12 @@
+config:
+  dataset: 'dylan'
+  max_epochs: 5000
+  batch_size: 10000
+  min_delta: 0.0000008
+  patience: 50
+  emb_dim: 32
+  latent_dim: 64
+  hidden_layer_dim: 16
+  mirt_dim: 3
+  lr: .005
+
