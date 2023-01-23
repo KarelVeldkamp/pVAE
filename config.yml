@@ -1,9 +1,9 @@
 config:
-  dataset: 'dylan'
+  dataset: 'missing'
   max_epochs: 5000
-  batch_size: 10000
-  min_delta: 0.0000008
-  patience: 50
+  batch_size: 1000
+  min_delta: 0.00008
+  patience: 10
   emb_dim: 32
   latent_dim: 64
   hidden_layer_dim: 16

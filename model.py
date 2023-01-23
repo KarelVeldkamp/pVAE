@@ -166,15 +166,15 @@ class PartialVariationalAutoencoder(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # forward pass
 
-        user_ids, ratings, output = batch
+        user_ids, ratings, output, mask = batch
 
         X_hat = self(user_ids, ratings)
-        missing_mask = output != 0
+        missing_mask = ~torch.isnan(output)
         missing_mask = missing_mask.long()
 
         # calculate the likelihood, and take the mean of all non missing elements
         bce = torch.nn.functional.binary_cross_entropy(X_hat, batch[2], reduction='none')
-        bce = bce*missing_mask
+        bce = bce*mask
         bce = torch.mean(bce) * self.nitems
 
 
