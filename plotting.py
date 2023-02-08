@@ -9,7 +9,7 @@ def plot(vae, dataset):
     # read data and true parameter values
     DS = CSVDataset(f'./data/{dataset}/data.csv')
     dataloader = torch.utils.data.DataLoader(dataset=DS, batch_size=len(DS))
-    items, ratings, _ = next(iter(dataloader))
+    items, ratings, _ , _= next(iter(dataloader))
 
     # read in true parameter estimates
     a_true = pd.read_csv(f'./data/{dataset}/a.csv').iloc[:, 1:].values

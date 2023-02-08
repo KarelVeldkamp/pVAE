@@ -1,13 +1,14 @@
 from data import *
 import torch
 from torch import nn
+import torch.nn.functional as F
 import torch.nn.utils.prune
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 import numpy as np
 
 class PartialEncoder(pl.LightningModule):
-    def __init__(self, n_items, emb_dim, latent_dim, hidden_layer_dim, mirt_dim):
+    def __init__(self, n_items, emb_dim, h_hidden_dim, latent_dim, hidden_layer_dim, mirt_dim):
         """
 
         :param n_items: total number of items
@@ -24,9 +25,9 @@ class PartialEncoder(pl.LightningModule):
         )
 
         self.emb_dim = emb_dim
-        self.h_dense1 = nn.Linear(emb_dim, latent_dim)
+        self.h_dense1 = nn.Linear(emb_dim, h_hidden_dim)
+        self.h_dense2 = nn.Linear(h_hidden_dim, latent_dim)
 
-        self.pool = nn.AdaptiveAvgPool1d(1)
 
         self.dense1 = nn.Linear(latent_dim, hidden_layer_dim)
         self.dense2m = nn.Linear(hidden_layer_dim, mirt_dim)
@@ -39,19 +40,23 @@ class PartialEncoder(pl.LightningModule):
         """
         A forward pass though the encoder network
         :param item_ids: a tensor with item ids
-        :param item ratings: a tensor with the corresponding item ratings
+        :param item_ratings: a tensor with the corresponding item ratings
         :returns: (sample from the latent distribution, mean of the distribution, sd of the distribution)
         """
+
         E = self.embedding(item_ids)
 
         R = item_ratings.unsqueeze(2).repeat((1,1, self.emb_dim))
 
         S = E * R
 
-        out = self.h_dense1(S)
-        C = torch.mean(out, 1)
+        out = F.relu(self.h_dense1(S))
+        out = F.relu(self.h_dense2(out))
+        mean = torch.max(out, 1).values
 
-        hidden = self.dense1(C)
+
+        #dist = torch.cat([mean, sd, quantiles[0], quantiles[1], quantiles[2]], dim=1)
+        hidden = F.relu(self.dense1(mean))
         mu = self.dense2m(hidden)
         log_sigma = self.dense2s(hidden)
         sigma = torch.exp(log_sigma)
@@ -115,6 +120,7 @@ class PartialVariationalAutoencoder(pl.LightningModule):
 
     def __init__(self,
                  emb_dim: int,
+                 h_hidden_dim:int,
                  latent_dim: int,
                  hidden_layer_dim: int,
                  mirt_dim: int,
@@ -141,7 +147,7 @@ class PartialVariationalAutoencoder(pl.LightningModule):
                   'missing': 400}
         self.nitems = nitems_dict[dataset]
 
-        self.encoder = PartialEncoder(self.nitems, emb_dim, latent_dim, hidden_layer_dim, mirt_dim)
+        self.encoder = PartialEncoder(self.nitems, emb_dim, h_hidden_dim, latent_dim, hidden_layer_dim, mirt_dim)
 
         self.decoder = Decoder(self.nitems, mirt_dim, qm=Q)
 
@@ -164,22 +170,20 @@ class PartialVariationalAutoencoder(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr, amsgrad=True)
 
     def training_step(self, batch, batch_idx):
-        # forward pass
-
         user_ids, ratings, output, mask = batch
 
         X_hat = self(user_ids, ratings)
-        missing_mask = ~torch.isnan(output)
-        missing_mask = missing_mask.long()
 
         # calculate the likelihood, and take the mean of all non missing elements
-        bce = torch.nn.functional.binary_cross_entropy(X_hat, batch[2], reduction='none')
-        bce = bce*mask
+        bce = torch.nn.functional.binary_cross_entropy(X_hat, batch[2], reduction='none') * mask
         bce = torch.mean(bce) * self.nitems
+        bce = bce / torch.mean(mask.float())
 
 
         # sum the likelihood and the kl divergence
         loss = bce + self.beta * self.encoder.kl
+        self.log('binary_cross_entropy', bce)
+        self.log('kl_divergence', self.encoder.kl)
         self.log('train_loss', loss)
 
         return {'loss': loss}

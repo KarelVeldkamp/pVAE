@@ -43,7 +43,6 @@ class CSVDataset():
     def __init__(self, filename: str):
         self.df = self.df = pd.read_csv(filename, index_col=0)
         self.n_max = np.max(np.sum(pd.notna(self.df), axis=1))
-        print(self.n_max)
 
     def __len__(self):
         return len(self.df.index)
@@ -54,16 +53,17 @@ class CSVDataset():
         output = self.df.iloc[idx,:]
 
         # indicating which ratings are not missing
-        mask = torch.Tensor((~pd.isna(output)).astype(int))
+        mask = torch.Tensor((pd.notna(output)).astype(int))
 
         # save list of movie ids and ratings and replace NA's in output with 0s (will be disregarded in loss using mask)
         movie_ids = np.where(pd.notna(output))[0]
         ratings = output.iloc[movie_ids]
-        output = output.fillna(0)
+        output = torch.Tensor(output.fillna(0))
 
         # convert to tensor and pad with constant values
-        output = torch.Tensor(output)
         movie_ids = np.squeeze(np.pad(movie_ids, (self.n_max-ratings.shape[0],0), 'constant', constant_values=2))
         ratings = torch.Tensor(np.pad(ratings, (self.n_max - ratings.shape[0], 0), 'constant', constant_values=2))
+
+
         return movie_ids, ratings, output, mask
 
